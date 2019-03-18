@@ -7,7 +7,7 @@ using static P215Test.NetworkAdapters;
 using static P215Test.Program;
 using static System.Drawing.Color;
 using System.ComponentModel;
-
+using System.Threading.Tasks;
 
 namespace P215Test
 {
@@ -43,14 +43,14 @@ namespace P215Test
             }
         }
 
-        internal NetworkAdapter.SpeedDuplex GetSpeed()
+        internal NetworkAdapter.NetworkSpeed GetSpeed()
         {
             if (radioButtonSpeed10.Checked)
-                return NetworkAdapter.SpeedDuplex.FullDuplex_10;
+                return NetworkAdapter.NetworkSpeed.FullDuplex_10;
 
             else return radioButtonSpeed100.Checked
-                ? NetworkAdapter.SpeedDuplex.FullDuplex_100
-                : NetworkAdapter.SpeedDuplex.AutoNegotiation;
+                ? NetworkAdapter.NetworkSpeed.FullDuplex_100
+                : NetworkAdapter.NetworkSpeed.Empty;
         }
 
         internal void LabelsHide()
@@ -69,7 +69,7 @@ namespace P215Test
         {
             LabelsHide();
             for (uint i = 1; i < Count; ++i)
-                Networks[i].CheckBox.Checked = Networks[i].Speed = false;
+                Networks[i].CheckBox.Checked = false;
         }
 
         internal bool CheckPorts()
@@ -114,6 +114,14 @@ namespace P215Test
             survey.Text = isLock ? "СТОП" : "ОПРОС";
             survey.Enabled = true;
         }
+        internal void Wait(bool isEnabled)
+        {
+            foreach (Control item in Controls)
+                item.Enabled = !isEnabled;
+
+            labelWaitChangeSpeed.Visible = 
+                labelWaitChangeSpeed.Enabled = isEnabled;
+        }
 
         private void ButtonSurvey_Click(object sender, EventArgs e)
         {
@@ -145,15 +153,22 @@ namespace P215Test
                 MessageBox.Show("Камера не найдена", "Ошибка подключения камеры", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
 
-        private void RadioButtonSpeed_CheckedChanged(object sender, EventArgs e)
+        private void RadioButtonSpeed100_CheckedChanged(object sender, EventArgs e)
         {
-            NetworkAdapter.SpeedDuplex speed = NetworkAdapter.SpeedDuplex.FullDuplex_100;
+
+        }
+
+        private async void RadioButtonSpeed_CheckedChanged(object sender, EventArgs e)
+        {
+            NetworkAdapter.NetworkSpeed speed = radioButtonSpeed100.Checked
+                ? NetworkAdapter.NetworkSpeed.FullDuplex_100
+                : NetworkAdapter.NetworkSpeed.FullDuplex_10;
 
             LabelsHide();
-            if (((RadioButton)sender).Name == "radioButtonSpeed10")
-                speed = NetworkAdapter.SpeedDuplex.FullDuplex_10;
 
-            Networks.SetSpeedAllAsync(speed);
+            Wait(true);
+            await Networks.SetSpeedAllAsync(speed);
+            Wait(false);
         }
 
         private void CheckBox_CheckedChanged(object sender, EventArgs e)

@@ -3,6 +3,7 @@ using System;
 using System.Collections;
 using System.ComponentModel;
 using System.Linq;
+using System.Management;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -40,44 +41,49 @@ namespace P215Test
             RegistryKey key = Registry.LocalMachine.OpenSubKey(NetworkRegisrty.Path);
             string[] folders = key.GetSubKeyNames();  // названия подпапок в директории
 
-            uint adapterNum = 0;
             foreach (string folder in folders)
             {
-                if (adapterNum > 16) break;   // завершаем перебор, если найдены все 17 интерфейсов
-
                 NetworkRegisrty.GetTypeAndDriverId(folder, out key, out int type, out string driverId);
                 if (type == 14 && driverId.Substring(0, 3) == "PCI") // сеть стандарта 802.3 && адаптер, подкл. через PCI-шину
                 {
-                    NetworkRegisrty.GetIPAndMAC(key, out string[] ips, out string[] macs);
+                    NetworkRegisrty.GetIPAndMAC(key, out string folderIP, out string[] ips, out string[] macs);
                     if (ips != null && macs != null)
                     {
-                        try
-                        {
-                            string ip = ips[0];
-                            if (ip.Substring(0, 12) == "192.168.100." && macs[0] == "255.255.255.0")
-                            {
-                                uint portNum = Convert.ToUInt32(ip.Substring(12));
-
-                                if (1 <= portNum && portNum <= 16)
-                                    Interface[portNum] = new NetworkAdapter(true, ip, folder);
-                                else if (portNum == 100)
-                                    Interface[0] = new NetworkAdapter(true, ip, folder);
-
-                                adapterNum++;
-                            }
-                        }
-                        catch { }
+                        ValidatedConfigPort(folder, folderIP, ips[0], macs[0]);
                     }
                 }
             }
         }
-
-        internal async void SetSpeedAllAsync(SpeedDuplex speed)
+        private void ValidatedConfigPort(string folder, string folderIP, string ip, string mac)
         {
-            await Task.Run(() =>
+            if (ip == null || mac == null)
+            { return; }
+
+            try
+            {
+                if (ip.Substring(0, 12) == "192.168.100." && mac == "255.255.255.0")
+                {
+                    uint num = Convert.ToUInt32(ip.Substring(12));
+
+                    if (1 <= num && num <= 16)
+                        Interface[num] = new NetworkAdapter(true, folder, folderIP, ip);
+                    else if (num == 100)
+                        Interface[0] = new NetworkAdapter(true, folder, folderIP, ip);
+                }
+            }
+            catch { }   // Substring(), Interface[portNum].GetSpeed()
+        }
+
+        internal async Task SetSpeedAllAsync(NetworkSpeed speed)
+        {
+            await Task.Factory.StartNew(() =>
             {
                 for (uint i = 1; i < Count; ++i)
-                    Networks[i].SetSpeed(speed);
+                {
+                    if (Networks[i].CheckBox.Checked)           // если порт выбран
+                        if (Networks[i].GetSpeed() != speed)    // и его скорость не совпадает с установленной в форме,
+                            Networks[i].SetSpeed(speed);        // тогда изменяем ее
+                }
             });
         }
 
@@ -85,7 +91,7 @@ namespace P215Test
         {
             bool isPort = false;
 
-            if (Interface[0].Config == false)
+            if (Interface[0].IsConfig == false)
             {
                 if (GetMACFromIP(DestAddr) == "")
                 {
@@ -96,6 +102,21 @@ namespace P215Test
             }
             else
             {
+                if (Dns.GetHostEntry(Dns.GetHostName()).AddressList.Contains(DestAddr) == false)
+                {
+                    MessageBox.Show("Проверьте кабель или настройки порта №17", "Ошибка порта",
+                                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    isPort = true;
+                }
+                /*var host = Dns.GetHostEntry(Dns.GetHostName());
+                foreach (var ip in host.AddressList)
+                {
+                    if (ip.AddressFamily == AddressFamily.InterNetwork)
+                    {
+                        Console.WriteLine(ip.ToString());
+                    }
+                }
+
                 if (NetworkInterface.GetAllNetworkInterfaces().
                     Where(iNet => iNet.Description == Interface[0].GetName()).
                     First().OperationalStatus == OperationalStatus.Down)
@@ -103,7 +124,7 @@ namespace P215Test
                     MessageBox.Show("Проверьте кабель или настройки порта №17", "Ошибка порта",
                                     MessageBoxButtons.OK, MessageBoxIcon.Error);
                     isPort = true;
-                }
+                }*/
             }
             return isPort;
         }
@@ -112,60 +133,82 @@ namespace P215Test
 
     internal class NetworkAdapter : NetworkRegisrty
     {
-        internal NetworkAdapter (bool config = false, bool speed = false)
+        internal NetworkAdapter (bool config = false)
             : base()
         {
-            Config = config;
-            Speed = speed;
+            IsConfig = config;
         }
-        internal NetworkAdapter(bool config, string ip, string folder)
-            : base(ip, folder)
+        internal NetworkAdapter(bool config, string folder, string folderIP, string ip)
+            : base(folder, folderIP, ip)
         {
-            Config = config;
+            IsConfig = config;
         }
 
-        internal enum SpeedDuplex
+        internal enum NetworkSpeed
         {
             AutoNegotiation,
             HalfDuplex_10,
             FullDuplex_10,
             HalfDuplex_100,
-            FullDuplex_100
+            FullDuplex_100,
+            FullDuplex_1000 = 6,
+            Empty = 255
         }
-        internal bool Config { get; set; }
+        internal bool IsConfig { get; set; }   // флаг, установлен ли ip-адрес
         internal CheckBox CheckBox { get; set; }
-        internal bool Speed { get; set; }
         internal Label Label { get; set; }
 
-        internal void SetSpeed(SpeedDuplex speed)
+        internal void SetSpeed(NetworkSpeed speed)
         {
-            if (CheckBox.Checked)
+            try
             {
-                try
-                {
-                    RegistryKey key = Registry.LocalMachine.OpenSubKey(Path + "\\" + Folder, true);
-                    key.SetValue("*SpeedDuplex", speed.ToString("d"));
-                    key.Flush();
-                    Speed = true;
-                }
-                catch
-                {
-                    MessageBox.Show("Перезапустите программу с правами администратора.", "Ошибка прав доступа",
-                        MessageBoxButtons.OK, MessageBoxIcon.Stop);
-                    Application.Exit();
-                }
+                RegistryKey key = Registry.LocalMachine.OpenSubKey(Path + "\\" + Folder, true);
+                key.SetValue("*SpeedDuplex", speed.ToString("d"));
+                key.Flush();
+
+                Reset();
+            }
+            catch
+            {
+                MessageBox.Show("Перезапустите программу с правами администратора.", "Ошибка прав доступа",
+                    MessageBoxButtons.OK, MessageBoxIcon.Stop);
+                Application.Exit();
+            }
+        }
+
+        internal void Reset()
+        {
+            ManagementObjectSearcher searcher =
+                new ManagementObjectSearcher("root\\CIMV2",
+                    $"SELECT * FROM Win32_NetworkAdapter WHERE GUID = '{FolderIP}'");
+
+            foreach (ManagementObject obj in searcher.Get())
+            {
+                obj.InvokeMethod("Disable", null, null);
+                obj.InvokeMethod("Enable", null, null);
             }
         }
 
         internal void CheckConfig(uint num)
         {
-            if (CheckBox.Checked)
+            if (CheckBox.Checked)   // если выбран порт
             {
-                if (Config)
+                // если выбрана скорость, очистить результаты
+                if (MyForm.radioButtonSpeed10.Checked || MyForm.radioButtonSpeed100.Checked)
+                    MyForm.LabelsHide();
+
+                if (IsConfig) // если правильно настроен ip
                 {
-                    SpeedDuplex speed = MyForm.GetSpeed();
-                    if (speed != SpeedDuplex.AutoNegotiation)
-                        SetSpeed(speed);
+                    NetworkSpeed speedForm = MyForm.GetSpeed();
+
+                    // если скорость интерфейсов установлена на форме и не равна скорости порта,
+                    // то измен. скорость порта
+                    if (speedForm != NetworkSpeed.Empty && speedForm != GetSpeed())
+                    {
+                        MyForm.Wait(true);
+                        SetSpeed(speedForm);
+                        MyForm.Wait(false);
+                    }
                 }
                 else
                 {
@@ -174,7 +217,7 @@ namespace P215Test
                     CheckBox.Checked = false;
                 }
             }
-            else Speed = false;
+            else MyForm.LabelsHide();
         }
 
         internal PingReply Send(IPAddress srcAddress, IPAddress destAddress, int timeout = 5000,
@@ -278,21 +321,24 @@ namespace P215Test
 
     internal class NetworkRegisrty
     {
-        internal NetworkRegisrty(string ip = "", string folder = "")
+        internal NetworkRegisrty(string folder = "", string folderIP = "", string ip = "")
         {
-            IP = ip;
             Folder = folder;
+            FolderIP = folderIP;
+            IP = ip;
         }
-        internal string IP { get; set; }
-        internal string Folder { get; set; }
+        internal string FolderIP { get; private set; }
+        internal string IP { get; private set; }
+        internal string Folder { get; private set; }
         internal static string Path { get; } = "SYSTEM\\CurrentControlSet\\Control\\Class\\{4d36e972-e325-11ce-bfc1-08002be10318}";
         internal static string PathIP { get; } = "SYSTEM\\CurrentControlSet\\Services\\Tcpip\\Parameters\\Interfaces";
 
 
-        internal string GetName()
+        internal NetworkSpeed GetSpeed()
         {
             RegistryKey key = Registry.LocalMachine.OpenSubKey($"{Path}\\{Folder}");
-            return (string)key.GetValue("DriverDesc");
+            string value = (string)key.GetValue("*SpeedDuplex");
+            return (NetworkSpeed) Convert.ToUInt32(value);
         }
 
         internal static void GetTypeAndDriverId(string folder, out RegistryKey key, out int type, out string driverId)
@@ -306,10 +352,10 @@ namespace P215Test
             catch { key = null; driverId = null; type = 255; }
         }
 
-        internal static void GetIPAndMAC(RegistryKey key, out string[] ips, out string[] macs)
+        internal static void GetIPAndMAC(RegistryKey key, out string folderIP, out string[] ips, out string[] macs)
         {
-            string folder = (string)key.GetValue("NetCfgInstanceId");   // дескриптор сетевого интерфейса
-            key = Registry.LocalMachine.OpenSubKey($"{PathIP}\\{folder}");
+            folderIP = (string)key.GetValue("NetCfgInstanceId");   // дескриптор сетевого интерфейса
+            key = Registry.LocalMachine.OpenSubKey($"{PathIP}\\{folderIP}");
             ips = (string[])key.GetValue("IPAddress");    // список ip-адресов
             macs = (string[])key.GetValue("SubnetMask");
         }

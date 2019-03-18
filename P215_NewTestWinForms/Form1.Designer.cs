@@ -71,6 +71,7 @@
             this.checkBox1 = new System.Windows.Forms.CheckBox();
             this.timer = new System.Windows.Forms.Timer(this.components);
             this.backgroundWorker = new System.ComponentModel.BackgroundWorker();
+            this.labelWaitChangeSpeed = new System.Windows.Forms.Label();
             this.groupBoxPorts.SuspendLayout();
             this.SuspendLayout();
             // 
@@ -553,11 +554,24 @@
             this.backgroundWorker.ProgressChanged += new System.ComponentModel.ProgressChangedEventHandler(this.Worker_Progress);
             this.backgroundWorker.RunWorkerCompleted += new System.ComponentModel.RunWorkerCompletedEventHandler(this.Worker_Completed);
             // 
+            // labelWaitChangeSpeed
+            // 
+            this.labelWaitChangeSpeed.AutoSize = true;
+            this.labelWaitChangeSpeed.Font = new System.Drawing.Font("Microsoft Sans Serif", 8.25F);
+            this.labelWaitChangeSpeed.ForeColor = System.Drawing.Color.Red;
+            this.labelWaitChangeSpeed.Location = new System.Drawing.Point(22, 53);
+            this.labelWaitChangeSpeed.Name = "labelWaitChangeSpeed";
+            this.labelWaitChangeSpeed.Size = new System.Drawing.Size(240, 13);
+            this.labelWaitChangeSpeed.TabIndex = 8;
+            this.labelWaitChangeSpeed.Text = "Подождите, идет изменение скорости портов";
+            this.labelWaitChangeSpeed.Visible = false;
+            // 
             // Form1
             // 
             this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.ClientSize = new System.Drawing.Size(937, 385);
+            this.Controls.Add(this.labelWaitChangeSpeed);
             this.Controls.Add(this.groupBoxPorts);
             this.Controls.Add(this.radioButtonSpeed10);
             this.Controls.Add(this.radioButtonSpeed100);
@@ -566,6 +580,7 @@
             this.Controls.Add(this.buttonSurvey);
             this.Controls.Add(this.buttonRemoveAll);
             this.Controls.Add(this.buttonChooseAll);
+            this.MaximizeBox = false;
             this.Name = "Form1";
             this.Text = "Тест портов коммутатора Р215";
             this.Load += new System.EventHandler(this.Form1_Load);
@@ -583,8 +598,6 @@
         private System.Windows.Forms.Button buttonSurvey;
         private System.Windows.Forms.Button buttonVideo;
         private System.Windows.Forms.Label labelSpeedText;
-        private System.Windows.Forms.RadioButton radioButtonSpeed100;
-        private System.Windows.Forms.RadioButton radioButtonSpeed10;
         private System.Windows.Forms.GroupBox groupBoxPorts;
         private System.Windows.Forms.Label label2;
         private System.Windows.Forms.Label label1;
@@ -620,6 +633,9 @@
         private System.Windows.Forms.Label label3;
         private System.ComponentModel.BackgroundWorker backgroundWorker;
         private System.Windows.Forms.Timer timer;
+        internal System.Windows.Forms.RadioButton radioButtonSpeed100;
+        internal System.Windows.Forms.RadioButton radioButtonSpeed10;
+        internal System.Windows.Forms.Label labelWaitChangeSpeed;
     }
 }
 
