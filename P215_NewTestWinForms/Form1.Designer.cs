@@ -70,7 +70,6 @@
             this.checkBox2 = new System.Windows.Forms.CheckBox();
             this.checkBox1 = new System.Windows.Forms.CheckBox();
             this.timer = new System.Windows.Forms.Timer(this.components);
-            this.backgroundWorker = new System.ComponentModel.BackgroundWorker();
             this.labelWaitChangeSpeed = new System.Windows.Forms.Label();
             this.groupBoxPorts.SuspendLayout();
             this.SuspendLayout();
@@ -83,7 +82,7 @@
             this.buttonChooseAll.TabIndex = 0;
             this.buttonChooseAll.Text = "Выбрать все";
             this.buttonChooseAll.UseVisualStyleBackColor = true;
-            this.buttonChooseAll.Click += new System.EventHandler(this.ButtonChooseAll_Click);
+            this.buttonChooseAll.Click += new System.EventHandler(this.ButtonAll_Click);
             // 
             // buttonRemoveAll
             // 
@@ -93,7 +92,7 @@
             this.buttonRemoveAll.TabIndex = 1;
             this.buttonRemoveAll.Text = "Убрать все";
             this.buttonRemoveAll.UseVisualStyleBackColor = true;
-            this.buttonRemoveAll.Click += new System.EventHandler(this.ButtonRemoveAll_Click);
+            this.buttonRemoveAll.Click += new System.EventHandler(this.ButtonAll_Click);
             // 
             // buttonSurvey
             // 
@@ -546,14 +545,6 @@
             this.timer.Interval = 1000;
             this.timer.Tick += new System.EventHandler(this.Timer_Tick);
             // 
-            // backgroundWorker
-            // 
-            this.backgroundWorker.WorkerReportsProgress = true;
-            this.backgroundWorker.WorkerSupportsCancellation = true;
-            this.backgroundWorker.DoWork += new System.ComponentModel.DoWorkEventHandler(this.Worker_DoWork);
-            this.backgroundWorker.ProgressChanged += new System.ComponentModel.ProgressChangedEventHandler(this.Worker_Progress);
-            this.backgroundWorker.RunWorkerCompleted += new System.ComponentModel.RunWorkerCompletedEventHandler(this.Worker_Completed);
-            // 
             // labelWaitChangeSpeed
             // 
             this.labelWaitChangeSpeed.AutoSize = true;
@@ -583,6 +574,7 @@
             this.MaximizeBox = false;
             this.Name = "Form1";
             this.Text = "Тест портов коммутатора Р215";
+            this.FormClosing += new System.Windows.Forms.FormClosingEventHandler(this.Form1_FormClosing);
             this.Load += new System.EventHandler(this.Form1_Load);
             this.groupBoxPorts.ResumeLayout(false);
             this.groupBoxPorts.PerformLayout();
@@ -631,7 +623,6 @@
         private System.Windows.Forms.Label label5;
         private System.Windows.Forms.Label label4;
         private System.Windows.Forms.Label label3;
-        private System.ComponentModel.BackgroundWorker backgroundWorker;
         private System.Windows.Forms.Timer timer;
         internal System.Windows.Forms.RadioButton radioButtonSpeed100;
         internal System.Windows.Forms.RadioButton radioButtonSpeed10;

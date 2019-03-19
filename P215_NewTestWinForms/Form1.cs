@@ -13,12 +13,10 @@ namespace P215Test
 {
     internal partial class Form1 : Form
     {
-        private BackgroundWorker worker = new BackgroundWorker();
-
+        internal static bool IsClosing { get; set; } = false;
         private uint TickSec { get; set; } = 10;
-        private uint ItemsGroupBox => 16;
-        internal BackgroundWorker Worker => worker = MyForm.backgroundWorker;
         private NetworkAdapter NetActive { get; set; } = new NetworkAdapter();
+        internal static bool IsTestConducted { get; set; } = false;
 
         internal Form1()
         {
@@ -43,33 +41,31 @@ namespace P215Test
             }
         }
 
-        internal NetworkAdapter.NetworkSpeed GetSpeed()
-        {
-            if (radioButtonSpeed10.Checked)
-                return NetworkAdapter.NetworkSpeed.FullDuplex_10;
-
-            else return radioButtonSpeed100.Checked
-                ? NetworkAdapter.NetworkSpeed.FullDuplex_100
-                : NetworkAdapter.NetworkSpeed.Empty;
-        }
-
         internal void LabelsHide()
         {
             for(uint i = 1; i < Count; ++i)
                 Networks[i].Label.Visible = false;
         }
 
-        private void ButtonChooseAll_Click(object sender, EventArgs e)
+        internal void RadioButtonReset()
         {
-            for (uint i = 1; i < Count; ++i)
-                Networks[i].CheckBox.Checked = true;
+            radioButtonSpeed10.Checked =
+                radioButtonSpeed100.Checked = false;
         }
 
-        private void ButtonRemoveAll_Click(object sender, EventArgs e)
+        private void ButtonAll_Click(object sender, EventArgs e)
         {
-            LabelsHide();
+            RadioButtonReset();
+
+            bool check = true;
+            if ((Button)sender == buttonRemoveAll)
+                check = false;
+
             for (uint i = 1; i < Count; ++i)
-                Networks[i].CheckBox.Checked = false;
+            {
+                Networks[i].CheckBox.Checked = check;
+                Networks[i].Label.Visible = false;
+            }
         }
 
         internal bool CheckPorts()
@@ -114,7 +110,8 @@ namespace P215Test
             survey.Text = isLock ? "СТОП" : "ОПРОС";
             survey.Enabled = true;
         }
-        internal void Wait(bool isEnabled)
+
+        internal void WaitChangeSpeed(bool isEnabled)
         {
             foreach (Control item in Controls)
                 item.Enabled = !isEnabled;
@@ -123,23 +120,51 @@ namespace P215Test
                 labelWaitChangeSpeed.Enabled = isEnabled;
         }
 
-        private void ButtonSurvey_Click(object sender, EventArgs e)
+        private async void ButtonSurvey_Click(object sender, EventArgs e)
         {
             Button button = (Button)sender;
             if (button.Text == "ОПРОС")
             {
-                LabelsHide();   // очистить поля
+                LabelsHide();
 
                 if (Networks.CheckPort17() || CheckPorts() || CheckSpeed())
                     return;
 
-                BlockingForTest(true);
-                Worker.RunWorkerAsync(Networks);
-                Thread.Sleep(5);
+                try
+                {
+                    BlockingForTest(true);
+                    await PingTestAsync();
+                    IsTestConducted = true;
+                    BlockingForTest(false);
+                }
+                catch { }   // при закрытии программы во время теста
             }
             else if (button.Text == "СТОП")
             {
-                Worker.CancelAsync();
+                NetworkAdapter.CTS_Ping.Cancel();   // запрос на отмену PingTest()
+                NetActive.Label.Visible = false;    // скрыть обратный отсчет таймера
+                TimerStop();
+            }
+        }
+
+        private async Task PingTestAsync()
+        {
+            for (uint i = 1; i < Count; ++i)
+            {
+                NetActive = Networks[i];
+                if (NetActive.CheckBox.Checked)
+                {
+                    timer.Start();
+                    NetworkAdapter.CTS_Ping = new CancellationTokenSource();
+
+                    bool result = await NetActive.PingTestAsync();
+                    if (NetworkAdapter.CTS_Ping.IsCancellationRequested == false)
+                    {
+                        ShowResult(result);
+                        TimerStop();
+                    }
+                    else if(Form1.IsClosing) break;
+                }
             }
         }
 
@@ -153,22 +178,21 @@ namespace P215Test
                 MessageBox.Show("Камера не найдена", "Ошибка подключения камеры", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
 
-        private void RadioButtonSpeed100_CheckedChanged(object sender, EventArgs e)
-        {
-
-        }
-
         private async void RadioButtonSpeed_CheckedChanged(object sender, EventArgs e)
         {
-            NetworkAdapter.NetworkSpeed speed = radioButtonSpeed100.Checked
-                ? NetworkAdapter.NetworkSpeed.FullDuplex_100
-                : NetworkAdapter.NetworkSpeed.FullDuplex_10;
+            // Для исключения срабатывания при сбросе радикнопок
+            if(radioButtonSpeed10.Checked || radioButtonSpeed100.Checked)
+            {
+                NetworkAdapter.NetworkSpeed speed = radioButtonSpeed100.Checked
+                    ? NetworkAdapter.NetworkSpeed.FullDuplex_100
+                    : NetworkAdapter.NetworkSpeed.FullDuplex_10;
 
-            LabelsHide();
+                LabelsHide();
 
-            Wait(true);
-            await Networks.SetSpeedAllAsync(speed);
-            Wait(false);
+                WaitChangeSpeed(true);
+                await Networks.SetSpeedAllAsync(speed);
+                WaitChangeSpeed(false);
+            }
         }
 
         private void CheckBox_CheckedChanged(object sender, EventArgs e)
@@ -184,6 +208,12 @@ namespace P215Test
             adapter.Label.Visible = true;
         }
 
+        void ShowResult(bool result)
+        {
+            if (result) ShowLabel(NetActive, Green, "Работает");
+            else        ShowLabel(NetActive, Red, "Не работает");
+        }
+
         private void Timer_Tick(object sender, EventArgs e)
         {
             if (--TickSec > 0)
@@ -191,48 +221,30 @@ namespace P215Test
 
             else  // прошло 10 секунд
             {
-                timer.Stop();
-                TickSec = 10;
-                ShowLabel(NetActive, Red, "Не работает");
-                Worker.CancelAsync();
+                NetworkAdapter.CTS_Ping.Cancel();
+                ShowResult(false);
+                TimerStop();
             }
         }
 
-        private void Worker_DoWork(object sender, DoWorkEventArgs e)
+        void TimerStop()
         {
-            PortState portState;
-            NetworkAdapters adapters = (NetworkAdapters)e.Argument;
+            timer.Stop();
+            TickSec = 10;
+        }
 
-            for(uint i = 1; i < Count; ++i)
+        private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            Form1.IsClosing = true;
+
+            if (NetworkAdapters.CTS_SetSpeed.IsCancellationRequested == false)
             {
-                if (Networks[i].CheckBox.Checked)
-                {
-                    NetActive = Networks[i];
-
-                    timer.Start();
-
-                    if (e.Cancel = NetActive.PingNumberOfTimes(100, out uint sendCount, out uint replyCount))
-                        return;
-
-                    portState = replyCount > 80 ? PortState.Working : PortState.NotWorking;
-                    timer.Stop();
-                    Worker.ReportProgress(Convert.ToInt32(portState), Networks[i]);
-                }
+                CTS_SetSpeed.Cancel();
             }
-        }
-
-        private void Worker_Progress(object sender, ProgressChangedEventArgs e)
-        {
-            bool isWork = e.ProgressPercentage == 0;
-            ShowLabel((NetworkAdapter)e.UserState, isWork ? Green : Red, isWork ? "Работает" : "Не работает");
-        }
-
-        private void Worker_Completed(object sender, RunWorkerCompletedEventArgs e)
-        {
-            if (e.Cancelled)
-                timer.Stop();
-
-            BlockingForTest(false);
+            if (NetworkAdapter.CTS_Ping.IsCancellationRequested == false)
+            {
+                NetworkAdapter.CTS_Ping.Cancel();
+            }
         }
     }
 }

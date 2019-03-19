@@ -8,6 +8,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using static P215Test.NetworkAdapter;
@@ -20,12 +21,8 @@ namespace P215Test
         internal static uint Count => 17;
         internal static IPAddress DestAddr => IPAddress.Parse("192.168.100.100");
         internal static IPAddress VideoIP => IPAddress.Parse("192.168.100.44");
-        internal enum PortState
-        {
-            Error = -1,
-            Working,
-            NotWorking
-        }
+        internal static CancellationTokenSource CTS_SetSpeed { get; private set; } = new CancellationTokenSource();
+        internal CancellationToken Token_SetSpeed => CTS_SetSpeed.Token;
 
         internal NetworkAdapter[] Interface { get; set; } = new NetworkAdapter[Count];
         internal NetworkAdapter this[uint i] { get => Interface[i]; set => Interface[i] = value; }
@@ -78,13 +75,14 @@ namespace P215Test
         {
             await Task.Factory.StartNew(() =>
             {
+                CTS_SetSpeed = new CancellationTokenSource();
                 for (uint i = 1; i < Count; ++i)
                 {
                     if (Networks[i].CheckBox.Checked)           // если порт выбран
                         if (Networks[i].GetSpeed() != speed)    // и его скорость не совпадает с установленной в форме,
                             Networks[i].SetSpeed(speed);        // тогда изменяем ее
                 }
-            });
+            }, Token_SetSpeed);
         }
 
         internal bool CheckPort17()
@@ -95,8 +93,8 @@ namespace P215Test
             {
                 if (GetMACFromIP(DestAddr) == "")
                 {
-                    MessageBox.Show("Ноутбук не подключен или неверные настройки порта!", "Ошибка порта",
-                                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    MessageBox.Show("Ноутбук не подключен или неправильно заданы начальные конфигурации сети ноутбука!",
+                                    "Ошибка порта", MessageBoxButtons.OK, MessageBoxIcon.Error);
                     isPort = true;
                 }
             }
@@ -108,23 +106,6 @@ namespace P215Test
                                     MessageBoxButtons.OK, MessageBoxIcon.Error);
                     isPort = true;
                 }
-                /*var host = Dns.GetHostEntry(Dns.GetHostName());
-                foreach (var ip in host.AddressList)
-                {
-                    if (ip.AddressFamily == AddressFamily.InterNetwork)
-                    {
-                        Console.WriteLine(ip.ToString());
-                    }
-                }
-
-                if (NetworkInterface.GetAllNetworkInterfaces().
-                    Where(iNet => iNet.Description == Interface[0].GetName()).
-                    First().OperationalStatus == OperationalStatus.Down)
-                {
-                    MessageBox.Show("Проверьте кабель или настройки порта №17", "Ошибка порта",
-                                    MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    isPort = true;
-                }*/
             }
             return isPort;
         }
@@ -143,6 +124,11 @@ namespace P215Test
         {
             IsConfig = config;
         }
+
+        internal static CancellationTokenSource CTS_Ping { get; set; } = new CancellationTokenSource();
+        internal CancellationToken Token_Ping => CTS_Ping.Token;
+        private uint NumberOfPingForSuccess => 8000;
+        private float QualityLevel => 0.8f;
 
         internal enum NetworkSpeed
         {
@@ -193,35 +179,52 @@ namespace P215Test
         {
             if (CheckBox.Checked)   // если выбран порт
             {
-                // если выбрана скорость, очистить результаты
+                // если выбрана скорость, очистить результаты и сбросить радиокнопки
                 if (MyForm.radioButtonSpeed10.Checked || MyForm.radioButtonSpeed100.Checked)
-                    MyForm.LabelsHide();
-
-                if (IsConfig) // если правильно настроен ip
                 {
-                    NetworkSpeed speedForm = MyForm.GetSpeed();
-
-                    // если скорость интерфейсов установлена на форме и не равна скорости порта,
-                    // то измен. скорость порта
-                    if (speedForm != NetworkSpeed.Empty && speedForm != GetSpeed())
-                    {
-                        MyForm.Wait(true);
-                        SetSpeed(speedForm);
-                        MyForm.Wait(false);
-                    }
+                    MyForm.LabelsHide();
+                    MyForm.RadioButtonReset();
                 }
-                else
+
+                if (IsConfig == false) // если неправильно настроен ip
                 {
                     MessageBox.Show($"Проверьте конфигурацию порта №{num.ToString()}", "Ошибка порта",
                                     MessageBoxButtons.OK, MessageBoxIcon.Error);
                     CheckBox.Checked = false;
                 }
             }
-            else MyForm.LabelsHide();
+            else if (Form1.IsTestConducted) // если только что проводился тест
+            {
+                MyForm.LabelsHide();
+                Form1.IsTestConducted = false;
+            }
+        }
+
+        internal async Task<bool> PingTestAsync()
+        {
+            return await Task<bool>.Factory.StartNew(() =>
+            {
+                PingReply pingReply;
+
+                uint replyCount = 0, sendCount = 0;
+                do
+                {
+                    pingReply = Send(IPAddress.Parse(IP), NetworkAdapters.DestAddr);
+                    if (pingReply.NativeCode == 1 && pingReply.Status == 0)
+                        ++replyCount;
+
+                    ++sendCount;
+                }
+                while ((replyCount < NumberOfPingForSuccess
+                        || replyCount / sendCount < QualityLevel)
+                       && CTS_Ping.IsCancellationRequested == false);
+
+                return (replyCount/sendCount > QualityLevel) ? true : false;
+            }, Token_Ping);
         }
 
         internal PingReply Send(IPAddress srcAddress, IPAddress destAddress, int timeout = 5000,
-                                byte[] buffer = null, PingOptions po = null)
+                        byte[] buffer = null, PingOptions po = null)
         {
             if (destAddress == null || destAddress.AddressFamily != AddressFamily.InterNetwork || destAddress.Equals(IPAddress.Any))
                 throw new ArgumentException();
@@ -277,24 +280,6 @@ namespace P215Test
             {
                 Marshal.FreeHGlobal(allocSpace); //free allocated space
             }
-        }
-        internal bool PingNumberOfTimes(uint cnt, out uint sendCnt, out uint replyCnt)
-        {
-            PingReply pingReply;
-
-            for (replyCnt = sendCnt = 0; sendCnt < cnt; ++sendCnt)
-            {
-                if (!MyForm.Worker.CancellationPending)
-                {
-                    pingReply = Send(IPAddress.Parse(IP), NetworkAdapters.DestAddr);
-
-                    if (pingReply.NativeCode == 1 && pingReply.Status == 0)
-                        ++replyCnt;
-                }
-                else return true;
-            }
-
-            return false;
         }
 
         [DllImport("iphlpapi.dll", ExactSpelling = true)]
