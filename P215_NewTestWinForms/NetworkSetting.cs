@@ -21,8 +21,12 @@ namespace P215Test
         internal static uint Count => 17;
         internal static IPAddress DestAddr => IPAddress.Parse("192.168.100.100");
         internal static IPAddress VideoIP => IPAddress.Parse("192.168.100.44");
+
         internal static CancellationTokenSource CTS_SetSpeed { get; private set; } = new CancellationTokenSource();
         internal CancellationToken Token_SetSpeed => CTS_SetSpeed.Token;
+        
+        // Проверка, активен ли порт
+        private bool IsConfigPort17 => Dns.GetHostEntry(Dns.GetHostName()).AddressList.Contains(DestAddr);
 
         internal NetworkAdapter[] Interface { get; set; } = new NetworkAdapter[Count];
         internal NetworkAdapter this[uint i] { get => Interface[i]; set => Interface[i] = value; }
@@ -32,6 +36,7 @@ namespace P215Test
                 Interface[i] = new NetworkAdapter();
         }
         public IEnumerator Enumerator => Interface.GetEnumerator();
+
 
         internal void SearchNetworkAdapters()
         {
@@ -63,9 +68,13 @@ namespace P215Test
                     uint num = Convert.ToUInt32(ip.Substring(12));
 
                     if (1 <= num && num <= 16)
+                    {
                         Interface[num] = new NetworkAdapter(true, folder, folderIP, ip);
-                    else if (num == 100)
+                    }
+                    else if (num == 100 && IsConfigPort17)
+                    {
                         Interface[0] = new NetworkAdapter(true, folder, folderIP, ip);
+                    }
                 }
             }
             catch { }   // Substring(), Interface[portNum].GetSpeed()
@@ -89,7 +98,9 @@ namespace P215Test
         {
             bool isPort = false;
 
-            if (Interface[0].IsConfig == false)
+            // порт не настроен или не активен,
+            // определяется при поиске интерфейсов SearchNetworkAdapters()
+            if (Networks[0].IsConfig == false)
             {
                 if (GetMACFromIP(DestAddr) == "")
                 {
@@ -98,15 +109,14 @@ namespace P215Test
                     isPort = true;
                 }
             }
-            else
+            // порт настроен, но не активен
+            else if(IsConfigPort17 == false)
             {
-                if (Dns.GetHostEntry(Dns.GetHostName()).AddressList.Contains(DestAddr) == false)
-                {
-                    MessageBox.Show("Проверьте кабель или настройки порта №17", "Ошибка порта",
+                MessageBox.Show("Проверьте кабель или настройки порта №17", "Ошибка порта",
                                     MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    isPort = true;
-                }
+                isPort = true;
             }
+
             return isPort;
         }
     }
@@ -140,7 +150,7 @@ namespace P215Test
             FullDuplex_1000 = 6,
             Empty = 255
         }
-        internal bool IsConfig { get; set; }   // флаг, установлен ли ip-адрес
+        internal bool IsConfig { get; set; }   // установлен ли ip-адрес
         internal CheckBox CheckBox { get; set; }
         internal Label Label { get; set; }
 
