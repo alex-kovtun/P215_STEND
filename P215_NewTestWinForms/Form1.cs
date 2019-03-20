@@ -143,7 +143,6 @@ namespace P215Test
             {
                 NetworkAdapter.CTS_Ping.Cancel();   // запрос на отмену PingTest()
                 NetActive.Label.Visible = false;    // скрыть обратный отсчет таймера
-                TimerStop();
             }
         }
 
@@ -157,13 +156,21 @@ namespace P215Test
                     timer.Start();
                     NetworkAdapter.CTS_Ping = new CancellationTokenSource();
 
+                    bool isBreak = false;   // для прерывания цикла for
                     bool result = await NetActive.PingTestAsync();
-                    if (NetworkAdapter.CTS_Ping.IsCancellationRequested == false)
+
+                    if (result) ShowResult(result);
+
+                    else if (NetworkAdapter.CTS_Ping.IsCancellationRequested)
                     {
-                        ShowResult(result);
-                        TimerStop();
+                        if (!timer.Enabled) { continue; }  // прошло 10 секунд
+                        else { isBreak = true; }           // нажата кнопка СТОП 
                     }
-                    else if(Form1.IsClosing) break;
+                    else if (Form1.IsClosing) { isBreak = true; }
+
+                    TimerStop();
+
+                    if (isBreak) break;
                 }
             }
         }
@@ -181,7 +188,7 @@ namespace P215Test
         private async void RadioButtonSpeed_CheckedChanged(object sender, EventArgs e)
         {
             // Для исключения срабатывания при сбросе радикнопок
-            if(radioButtonSpeed10.Checked || radioButtonSpeed100.Checked)
+            if (((RadioButton)sender).Checked)
             {
                 NetworkAdapter.NetworkSpeed speed = radioButtonSpeed100.Checked
                     ? NetworkAdapter.NetworkSpeed.FullDuplex_100
@@ -190,7 +197,10 @@ namespace P215Test
                 LabelsHide();
 
                 WaitChangeSpeed(true);
-                await Networks.SetSpeedAllAsync(speed);
+
+                bool isChange =  await Networks.SetSpeedAllAsync(speed);
+                if(isChange) Task.Delay(3000).Wait();
+
                 WaitChangeSpeed(false);
             }
         }

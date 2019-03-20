@@ -80,17 +80,24 @@ namespace P215Test
             catch { }   // Substring(), Interface[portNum].GetSpeed()
         }
 
-        internal async Task SetSpeedAllAsync(NetworkSpeed speed)
+        internal async Task<bool> SetSpeedAllAsync(NetworkSpeed speed)
         {
-            await Task.Factory.StartNew(() =>
+            return await Task<bool>.Factory.StartNew(() =>
             {
+                bool speedChange = false;
                 CTS_SetSpeed = new CancellationTokenSource();
+
                 for (uint i = 1; i < Count; ++i)
                 {
                     if (Networks[i].CheckBox.Checked)           // если порт выбран
                         if (Networks[i].GetSpeed() != speed)    // и его скорость не совпадает с установленной в форме,
+                        {
                             Networks[i].SetSpeed(speed);        // тогда изменяем ее
+                            speedChange = true;
+                        }
                 }
+
+                return speedChange;
             }, Token_SetSpeed);
         }
 
@@ -137,7 +144,7 @@ namespace P215Test
 
         internal static CancellationTokenSource CTS_Ping { get; set; } = new CancellationTokenSource();
         internal CancellationToken Token_Ping => CTS_Ping.Token;
-        private uint NumberOfPingForSuccess => 8000;
+        private uint NumberOfPingForSuccess => 10000;
         private float QualityLevel => 0.8f;
 
         internal enum NetworkSpeed
@@ -225,11 +232,13 @@ namespace P215Test
 
                     ++sendCount;
                 }
-                while ((replyCount < NumberOfPingForSuccess
-                        || replyCount / sendCount < QualityLevel)
-                       && CTS_Ping.IsCancellationRequested == false);
+                while ((replyCount/sendCount < QualityLevel ||
+                        replyCount < NumberOfPingForSuccess) &&
+                       CTS_Ping.IsCancellationRequested == false);
 
-                return (replyCount/sendCount > QualityLevel) ? true : false;
+                return (replyCount/sendCount > QualityLevel) && replyCount >= NumberOfPingForSuccess
+                        ? true
+                        : false;
             }, Token_Ping);
         }
 
