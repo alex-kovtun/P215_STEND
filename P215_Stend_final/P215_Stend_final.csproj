@@ -6,8 +6,8 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{70AF7EE5-11D5-428B-BB97-E338B28A4795}</ProjectGuid>
     <OutputType>WinExe</OutputType>
-    <RootNamespace>P215_NewTestWinForms</RootNamespace>
-    <AssemblyName>P215_NewTestWinForms</AssemblyName>
+    <RootNamespace>P215_Stend_final</RootNamespace>
+    <AssemblyName>P215_Stend_final</AssemblyName>
     <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
@@ -67,6 +67,7 @@
     <Compile Include="Properties\Resources.Designer.cs">
       <AutoGen>True</AutoGen>
       <DependentUpon>Resources.resx</DependentUpon>
+      <DesignTime>True</DesignTime>
     </Compile>
     <None Include="Properties\Settings.settings">
       <Generator>SettingsSingleFileGenerator</Generator>
